@@ -57,6 +57,7 @@ oplus_ufs_common_init(void)
 
 	printk("oplus_ufs_common_init");
 
+#if defined(CONFIG_TRACING) && defined(DEBUG)
 	rc = register_trace_android_vh_ufs_extra_query_retry(ufs_extra_query_retry_handle, NULL);
 	if (rc != 0)
 		pr_err("register_trace_android_vh_ufs_extra_query_retry failed! rc=%d\n", rc);
@@ -64,6 +65,7 @@ oplus_ufs_common_init(void)
 	rc = register_trace_android_vh_ufs_gen_proc_devinfo(ufs_gen_proc_devinfo_handle, NULL);
 	if (rc != 0)
 		pr_err("register_trace_android_vh_ufs_gen_proc_devinfo failed! rc=%d\n", rc);
+#endif
 
 	return rc;
 }
