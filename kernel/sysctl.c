@@ -145,7 +145,6 @@ static int __maybe_unused max_kswapd_threads = MAX_KSWAPD_THREADS;
 
 static unsigned int __maybe_unused half_million = 500000;
 static unsigned int __maybe_unused one_hundred_million = 100000000;
-static unsigned int __maybe_unused one_million = 1000000;
 
 #ifdef CONFIG_SCHED_WALT
 static int neg_three = -3;
@@ -401,22 +400,6 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "irqsoff_crash_sentinel_value",
-		.data		= &sysctl_irqsoff_crash_sentinel_value,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "irqsoff_crash_threshold_ns",
-		.data		= &sysctl_irqsoff_crash_threshold_ns,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= proc_douintvec_minmax,
-		.extra1		= &one_million,
-		.extra2		= &one_hundred_million,
 	},
 #endif
 #ifdef CONFIG_SCHED_WALT
