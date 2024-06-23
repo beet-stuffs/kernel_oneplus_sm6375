@@ -207,6 +207,39 @@ struct subsys_device {
 	struct list_head list;
 };
 
+#ifdef OPLUS_FEATURE_ADSP_RECOVERY
+static bool oplus_adsp_ssr = false;
+
+void oplus_adsp_set_ssr_state(bool state)
+{
+	if (oplus_adsp_ssr == state)
+		return;
+	oplus_adsp_ssr = state;
+	pr_err("set oplus_adsp_ssr=%d\n", oplus_adsp_ssr);
+}
+EXPORT_SYMBOL(oplus_adsp_set_ssr_state);
+
+bool oplus_adsp_get_ssr_state(void)
+{
+	pr_err("get oplus_adsp_ssr=%d\n", oplus_adsp_ssr);
+	return oplus_adsp_ssr;
+}
+EXPORT_SYMBOL(oplus_adsp_get_ssr_state);
+
+int oplus_adsp_get_restart_level(const char *name)
+{
+	struct subsys_device *dev = find_subsys_device(name);
+
+	if (!dev) {
+		pr_err("can not find subsys dev for '%s'\n", name?name:"unknown");
+		return -1;
+	}
+
+	return dev->restart_level;
+}
+EXPORT_SYMBOL(oplus_adsp_get_restart_level);
+#endif /* OPLUS_FEATURE_ADSP_RECOVERY */
+
 static struct subsys_device *to_subsys(struct device *d)
 {
 	return container_of(d, struct subsys_device, dev);
@@ -334,6 +367,7 @@ static ssize_t system_debug_store(struct device *dev,
 	return orig_count;
 }
 static DEVICE_ATTR_RW(system_debug);
+
 #define CRASH_CAUSE_BUF_LEN 128
 char crash_case_buf[CRASH_CAUSE_BUF_LEN] = {0};
 
@@ -661,9 +695,6 @@ static void notify_each_subsys_device(struct subsys_device **list,
 		notif_data.enable_mini_ramdumps = enable_mini_ramdumps;
 		notif_data.no_auth = dev->desc->no_auth;
 		notif_data.pdev = pdev;
-#if defined(CONFIG_QGKI) && defined(OPLUS_BUG_STABILITY)
-		notif_data.debug = 0xaa55aa55;
-#endif
 
 		trace_pil_notif("before_send_notif", notif, dev->desc->fw_name);
 		setup_timeout(dev->desc, NULL, SUBSYS_TO_HLOS);
@@ -674,23 +705,10 @@ static void notify_each_subsys_device(struct subsys_device **list,
 	}
 }
 
-#ifdef OPLUS_FEATURE_CHG_BASIC
-#if IS_BUILTIN(CONFIG_OPLUS_CHG)
-extern void oplus_turn_off_power_when_adsp_crash(void);
-#endif
-#endif
 static int subsystem_shutdown(struct subsys_device *dev, void *data)
 {
 	const char *name = dev->desc->name;
 	int ret;
-
-#ifdef OPLUS_FEATURE_CHG_BASIC
-#if IS_BUILTIN(CONFIG_OPLUS_CHG)
-	if (!strcmp(name, "adsp")) {
-		oplus_turn_off_power_when_adsp_crash();
-	}
-#endif
-#endif
 
 	pr_info("[%s:%d]: Shutting down %s\n",
 			current->comm, current->pid, name);
@@ -975,11 +993,6 @@ err_out:
 }
 EXPORT_SYMBOL(subsystem_put);
 
-#ifdef OPLUS_FEATURE_CHG_BASIC
-#if IS_BUILTIN(CONFIG_OPLUS_CHG)
-extern void oplus_adsp_crash_recover_work(void);
-#endif
-#endif
 static void subsystem_restart_wq_func(struct work_struct *work)
 {
 	struct subsys_device *dev = container_of(work,
@@ -1060,11 +1073,7 @@ static void subsystem_restart_wq_func(struct work_struct *work)
 	if (ret)
 		goto err;
 	notify_each_subsys_device(list, count, SUBSYS_AFTER_POWERUP, NULL);
-#ifdef OPLUS_FEATURE_CHG_BASIC
-#if IS_BUILTIN(CONFIG_OPLUS_CHG)
-	oplus_adsp_crash_recover_work();
-#endif
-#endif
+
 	pr_info("[%s:%d]: Restart sequence for %s completed.\n",
 			current->comm, current->pid, desc->name);
 
@@ -1134,7 +1143,8 @@ unsigned int getBKDRHash(char *str, unsigned int len)
 	unsigned int seed = 131; /* 31 131 1313 13131 131313 etc.. */
 	unsigned int hash = 0;
 	unsigned int i    = 0;
-	if (str == NULL) {
+	if (str == NULL
+		|| len > MAX_REASON_LEN) {
 		return 0;
 	}
 	for(i = 0; i < len; str++, i++) {
@@ -1154,7 +1164,12 @@ static void __modem_send_uevent(struct device *dev, char *reason)
 	unsigned int hashid = 0;
 
 	envp[0] = (char *)&modem_event;
-	if (reason && reason[0]) {
+
+	if (reason == NULL) {
+		return;
+	}
+
+	if (reason[0]) {
 		snprintf(modem_reason, sizeof(modem_reason), "MODEM_REASON=%s", reason);
 	} else {
 	    snprintf(modem_reason, sizeof(modem_reason), "MODEM_REASON=unkown");
@@ -1199,7 +1214,7 @@ void __adsp_send_uevent(struct device *dev, char *reason)
 	envp[1] = (char *)&adsp_reason;
 	envp[2] = 0;
 
-	if (dev) {
+	if(dev) {
 		ret_val = kobject_uevent_env(&(dev->kobj), KOBJ_CHANGE, envp);
 		if (!ret_val) {
 			pr_info("adsp_crash:kobject_uevent_env success!\n");
@@ -1260,7 +1275,8 @@ void subsystem_schedule_crash_uevent_work(struct device *dev, const char *device
 EXPORT_SYMBOL(subsystem_schedule_crash_uevent_work);
 #endif /*OPLUS_FEATURE_MODEM_MINIDUMP*/
 
-#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+#ifdef OPLUS_FEATURE_SWITCH_CHECK
+/* Add for: check fw status for switch issue */
 #define WCNSS_CRASH_REASON_SMEM		422
 #include <linux/soc/qcom/smem.h>
 #include <linux/soc/qcom/smem_state.h>
@@ -1272,13 +1288,13 @@ void __wlan_subsystem_send_uevent(struct device *dev, char *reason, const char *
 	char sub_name[300] = {0};
 	char *envp[4];
 
-	if (name) {
+	if(name) {
 		snprintf(sub_name, sizeof(sub_name), "subsystem_name=%s", name);
 	} else {
 		snprintf(sub_name, sizeof(sub_name), "subsystem_name=unkown");
 	}
 
-	if (reason) {
+	if(reason) {
 		snprintf(fw_Reason, sizeof(fw_Reason), "WLAN_MONITER_REASON=%s", reason);
 	} else {
 		snprintf(fw_Reason, sizeof(fw_Reason), "WLAN_MONITER_REASON=unkown");
@@ -1291,9 +1307,9 @@ void __wlan_subsystem_send_uevent(struct device *dev, char *reason, const char *
 	envp[2] = (char *)&sub_name;
 	envp[3] = 0;
 
-	if (dev) {
+	if(dev) {
 		ret_val = kobject_uevent_env(&(dev->kobj), KOBJ_CHANGE, envp);
-		if (!ret_val) {
+		if(!ret_val) {
 			pr_info("wlan crash:kobject_uevent_env success!\n");
 		} else {
 			pr_info("wlan crash:kobject_uevent_env fail,error=%d!\n", ret_val);
@@ -1308,7 +1324,8 @@ void wlan_subsystem_send_uevent(struct subsys_device *dev, char *reason, const c
 	return;
 }
 EXPORT_SYMBOL(wlan_subsystem_send_uevent);
-#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
+#endif /* OPLUS_FEATURE_SWITCH_CHECK */
+
 
 int subsystem_restart_dev(struct subsys_device *dev)
 {
@@ -1324,9 +1341,22 @@ int subsystem_restart_dev(struct subsys_device *dev)
 
 	name = dev->desc->name;
 
-#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+	#ifdef OPLUS_FEATURE_ADSP_RECOVERY
+	if (name && !strcmp(name, "adsp")) {
+		pr_err("adsp subsystem restart.\n");
+		if (oplus_adsp_get_ssr_state()) {
+			pr_err("adsp restarting, Ignoring request\n");
+			return 0;
+		} else {
+			pr_err("set adsp restart state\n");
+			oplus_adsp_set_ssr_state(true);
+		}
+	}
+	#endif /* OPLUS_FEATURE_ADSP_RECOVERY */
+
+#ifdef OPLUS_FEATURE_SWITCH_CHECK
 	__wlan_subsystem_send_uevent(&(dev->dev), "", dev->desc->name);
-#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
+#endif /* OPLUS_FEATURE_SWITCH_CHECK */
 
 	subsys_send_early_notifications(dev->early_notify);
 
@@ -1707,13 +1737,6 @@ struct subsys_device *subsys_register(struct subsys_desc *desc)
 	subsys->dev.bus = &subsys_bus_type;
 	subsys->dev.release = subsys_device_release;
 	subsys->notif_state = -1;
-#if IS_ENABLED(CONFIG_OPLUS_BUG_STABILITY_EFFECTON_QGKI)
-	#ifndef CONFIG_OPLUS_DAILY_BUILD
-		#ifndef CONFIG_OPLUS_SPECIAL_BUILD
-		subsys->restart_level = RESET_SUBSYS_COUPLED;
-		#endif
-	#endif
-#endif
 	subsys->desc->sysmon_pid = -1;
 	subsys->desc->state = NULL;
 	strlcpy(subsys->desc->fw_name, desc->name,
@@ -1739,8 +1762,6 @@ struct subsys_device *subsys_register(struct subsys_desc *desc)
 	dev_set_name(&subsys->dev, "subsys%d", subsys->id);
 
 	mutex_init(&subsys->track.lock);
-
-	subsys->restart_level = RESET_SUBSYS_COUPLED;
 
 	ret = device_register(&subsys->dev);
 	if (ret) {
