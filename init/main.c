@@ -479,6 +479,24 @@ void __init parse_early_options(char *cmdline)
 		   do_early_param);
 }
 
+static bool printk_disable_uart = true;
+int board_uart_console_status(char *cmdline)
+{
+	char *substr = NULL;
+	substr = strstr(cmdline, "printk.disable_uart=0");
+	if (substr) {
+		printk_disable_uart = false;
+		return 0;
+	}
+	printk_disable_uart = true;
+	return 0;
+}
+bool ext_boot_with_console(void)
+{
+	return !printk_disable_uart;
+}
+EXPORT_SYMBOL(ext_boot_with_console);
+
 /* Arch code calls this early on, or if not, just before other parsing. */
 void __init parse_early_param(void)
 {
@@ -607,7 +625,6 @@ asmlinkage __visible void __init start_kernel(void)
 	setup_per_cpu_areas();
 	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
 	boot_cpu_hotplug_init();
-
 	build_all_zonelists(NULL);
 	page_alloc_init();
 
@@ -632,6 +649,7 @@ asmlinkage __visible void __init start_kernel(void)
 	sort_main_extable();
 	trap_init();
 	mm_init();
+
 	poking_init();
 	ftrace_init();
 
@@ -1104,7 +1122,6 @@ void __weak free_initmem(void)
 static int __ref kernel_init(void *unused)
 {
 	int ret;
-
 	kernel_init_freeable();
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
@@ -1127,6 +1144,7 @@ static int __ref kernel_init(void *unused)
 #ifdef CONFIG_QGKI_MSM_BOOT_TIME_MARKER
 	place_marker("M - DRIVER Kernel Boot Done");
 #endif
+
 
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);
