@@ -25,13 +25,13 @@
 #include <linux/qti_power_supply.h>
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0))
-#include "../../../../../../kernel/msm-5.4/drivers/usb/typec/tcpc/inc/tcpci.h"
-#include "../../../../../../kernel/msm-5.4/drivers/usb/typec/tcpc/inc/tcpm.h"
-#include "../../../../../../kernel/msm-5.4/drivers/usb/typec/tcpc/inc/tcpci_typec.h"
+#include "../../../usb/typec/tcpc/inc/tcpci.h"
+#include "../../../usb/typec/tcpc/inc/tcpm.h"
+#include "../../../usb/typec/tcpc/inc/tcpci_typec.h"
 #else
-#include "../../../../../../kernel_platform/msm-kernel/drivers/usb/typec/pd/inc/tcpci.h"
-#include "../../../../../../kernel_platform/msm-kernel/drivers/usb/typec/pd/inc/tcpm.h"
-#include "../../../../../../kernel_platform/msm-kernel/drivers/usb/typec/pd/inc/tcpci_typec.h"
+#include "../../../usb/typec/pd/inc/tcpci.h"
+#include "../../../usb/typec/pd/inc/tcpm.h"
+#include "../../../usb/typec/pd/inc/tcpci_typec.h"
 #endif
 #include "../oplus_charger.h"
 #include "oplus_sy6974b.h"
