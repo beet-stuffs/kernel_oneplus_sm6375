@@ -694,7 +694,10 @@ struct touchpanel_snr {
 	uint16_t y;
 	uint8_t channel_x;
 	uint8_t channel_y;
+	uint8_t width_major;
+	uint8_t area_len;
 	uint8_t point_status;
+	u64 *data;
 	bool doing;
 	int max;
 	int min;
@@ -732,6 +735,7 @@ struct touchpanel_data {
 	uint32_t single_optimized_time;                    /*single touch optimized time*/
 	uint32_t total_operate_times;                      /*record total touch down and up count*/
 	struct firmware                 *firmware_in_dts;
+	bool kernel_grip_support;                           /*using grip function in kernel touch driver*/
 	bool high_frame_rate_support;
 	uint32_t high_frame_rate_time;
 	bool snr_read_support;                              /*feature to support reading snr data*/
@@ -1094,6 +1098,10 @@ extern int request_firmware_select(const struct firmware **firmware_p, const cha
 bool is_oem_unlocked(void);
 int  get_oem_verified_boot_state(void);
 
+ __attribute__((weak)) int opticalfp_irq_handler_uff(struct fp_underscreen_info *fp_tpinfo)
+{
+	return 0;
+}
 #ifndef CONFIG_TOUCHPANEL_NOTIFY
 int opticalfp_irq_handler(struct fp_underscreen_info *fp_tpinfo);
 #endif
