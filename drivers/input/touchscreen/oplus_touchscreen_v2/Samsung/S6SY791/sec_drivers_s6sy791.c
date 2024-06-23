@@ -42,6 +42,10 @@ static int sec_read_mutual(struct chip_data_s6sy791 *chip_info, u8 type,
 static bool check_calibration(struct chip_data_s6sy791 *chip_info);
 
 
+static int sec_set_large_corner_frame_limit(void *chip_data, int frame_limit);
+static int sec_set_condition_frame_limit(void *chip_data, int frame_limit);
+static int sec_set_large_frame_limit(void *chip_data, int frame_limit);
+
 
 /****** Start of other functions that work for oplus_touchpanel_operations callbacks***********/
 static int sec_enable_black_gesture(struct chip_data_s6sy791 *chip_info,
