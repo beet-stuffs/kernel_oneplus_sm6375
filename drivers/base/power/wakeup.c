@@ -545,7 +545,6 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 	if (WARN_ONCE(wakeup_source_not_registered(ws),
 			"unregistered wakeup source\n"))
 		return;
-
 	ws->active = true;
 	ws->active_count++;
 	ws->last_time = ktime_get();
@@ -974,7 +973,6 @@ void pm_system_irq_wakeup(unsigned int irq_number)
 			log_irq_wakeup_reason(irq_number);
 			pr_warn("%s: %d triggered %s\n", __func__,
 					irq_number, name);
-
 		}
 		pm_system_wakeup();
 	}
