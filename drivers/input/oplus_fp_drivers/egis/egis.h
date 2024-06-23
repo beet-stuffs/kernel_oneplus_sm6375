@@ -11,9 +11,6 @@
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/delay.h>
-#include <linux/wait.h>
-#include <linux/timer.h>
-#include <linux/jiffies.h>
 #include <linux/poll.h>
 #include <linux/sched.h>
 #include <linux/irq.h>
@@ -26,24 +23,22 @@
 #include <linux/miscdevice.h>
 #include <linux/gpio.h>
 
-#include <linux/printk.h>
-#include <linux/module.h>
 #include <linux/spi/spi.h>
-#include "../include/oplus_fp_common.h"
-#include <linux/msm_drm_notify.h>
-#include <linux/notifier.h>
-#include <linux/fb.h>
-/*#define FP_PD_DEBUG*/
-#define FP_PD_DEBUG
 
-#ifdef FP_PD_DEBUG
-#define DEBUG_PRINT(fmt, args...) pr_err(fmt, ## args)
+
+/*#define FP_SPI_DEBUG*/
+#define FP_SPI_DEBUG
+
+#ifdef FP_SPI_DEBUG
+//#define DEBUG_PRINT(fmt, args...) pr_err(fmt, ## args)
+#define DEBUG_PRINT printk
+
 #else
 #define DEBUG_PRINT(fmt, args...)
 #endif
 
-#define ET713_MAJOR					100 /* assigned */
-#define N_PD_MINORS				32  /* ... up to 256 */
+#define ET512_MAJOR				100 /* assigned */
+#define N_SPI_MINORS				32  /* ... up to 256 */
 
 #define FP_ADDRESS_0				0x00
 #define FP_WRITE_ADDRESS			0xAC
@@ -71,9 +66,6 @@
 #define FP_SET_SPI_CLOCK			0x06
 #define FP_RESET_SET				0x07
 
-#define WAIT_TP_TOUCH_DOWN			0x16
-#define WAIT_UI_READY				0x18
-#define WAIT_TP_TOUCH_UP			0x17
 /* trigger signal initial routine*/
 #define INT_TRIGGER_INIT			0xa4
 /* trigger signal close routine*/
@@ -84,13 +76,17 @@
 #define INT_TRIGGER_POLLING			0xa7
 /* polling abort*/
 #define INT_TRIGGER_ABORT			0xa8
-#define FP_TRANSFER_SYNC			0xAA
+
+#define FP_FREE_GPIO			    0xaf
+#define FP_SPICLK_ENABLE			0xaa
+#define FP_SPICLK_DISABLE			0xab
+#define DELETE_DEVICE_NODE			0xac
 
 #define DRDY_IRQ_ENABLE				1
 #define DRDY_IRQ_DISABLE			0
 
-#define EGIS_UI_DISAPPREAR		0
-#define EGIS_UI_READY			1
+#define FP_WAKELOCK_TIMEOUT_ENABLE  0xb1
+#define FP_WAKELOCK_TIMEOUT_DISABLE 0xb2
 
 /* interrupt polling */
 unsigned int fps_interrupt_poll(
@@ -131,69 +127,56 @@ struct egis_ioc_transfer {
 		? ((N)*(sizeof(struct egis_ioc_transfer))) : 0)
 #define EGIS_IOC_MESSAGE(N) _IOW(EGIS_IOC_MAGIC, 0, char[EGIS_MSGSIZE(N)])
 
-static const char * const pctl_names[] = {
-	"et713_reset_reset",
-	"et713_reset_active",
-	"et713_irq_active",
-};
-
-struct egis_data {
+struct egistec_data {
 	dev_t devt;
-	spinlock_t pd_lock;
+	spinlock_t spi_lock;
+	struct spi_device  *spi;	
 	struct platform_device *pd;
 	struct list_head device_entry;
 
-	struct pinctrl *fingerprint_pinctrl;
-	struct pinctrl_state *pinctrl_state[ARRAY_SIZE(pctl_names)];
-//	struct regulator *vreg[ARRAY_SIZE(vreg_conf)];
-	struct regulator *vreg[3];
-
 	/* buffer is NULL unless this device is open (users > 0) */
 	struct mutex buf_lock;
-	unsigned int users;
+	unsigned users;
 	u8 *buffer;
 
 	unsigned int irqPin;	    /* interrupt GPIO pin number */
-	unsigned int rstPin;	    /* Reset GPIO pin number */
+	unsigned int rstPin; 	    /* Reset GPIO pin number */
 
-	struct input_dev	*input_dev;
+	unsigned int vdd_18v_Pin;	/* Reset GPIO pin number */
+	unsigned int vcc_33v_Pin;	/* Reset GPIO pin number */
+
+    struct input_dev	*input_dev;
 	bool property_navigation_enable;
-    struct fp_underscreen_info fp_tpinfo;
-	struct notifier_block notifier;
-	char fb_black;
+
+#ifdef CONFIG_OF
+	struct pinctrl *pinctrl_gpios;
+	struct pinctrl_state *pins_irq;
+	struct pinctrl_state *pins_miso_spi, *pins_miso_pullhigh, *pins_miso_pulllow;
+	struct pinctrl_state *pins_reset_high, *pins_reset_low,*pins_power_high,*pins_power_low;
+#endif	
+	
+	
 };
 
-enum NETLINK_CMD {
-    EGIS_NET_EVENT_TEST = 0,
-    EGIS_NET_EVENT_IRQ = 1,
-    EGIS_NET_EVENT_SCR_OFF,
-    EGIS_NET_EVENT_SCR_ON,
-    EGIS_NET_EVENT_TP_TOUCHDOWN,
-    EGIS_NET_EVENT_TP_TOUCHUP,
-    EGIS_NET_EVENT_UI_READY,
-    EGIS_NET_EVENT_MAX,
-};
 
 /* ------------------------- Interrupt ------------------------------*/
 /* interrupt init */
 int Interrupt_Init(
-	struct egis_data *egis,
+	struct egistec_data *egistec,
 	int int_mode,
 	int detect_period,
 	int detect_threshold);
 
 /* interrupt free */
-int Interrupt_Free(struct egis_data *egis);
+int Interrupt_Free(struct egistec_data *egistec);
 
 void fps_interrupt_abort(void);
-void egis_sendnlmsg(char *msg);
-int egis_netlink_init(void);
-void egis_netlink_exit(void);
+
 
 /* ------------------------- Data Transfer --------------------------*/
-/*[REM] int fp_io_read_register(struct fp_data *fp, u8 *addr, u8 *buf); */
-/*[REM] int fp_io_write_register(struct fp_data *fp, u8 *buf);*/
-/*[REM] int fp_io_get_one_image(struct fp_data *fp, u8 *buf, u8 *image_buf);*/
-/*[REM] int fp_read_register(struct fp_data *fp, u8 addr, u8 *buf);*/
-/*[REM] int fp_mass_read(struct fp_data *fp, u8 addr, u8 *buf, int read_len);*/
+//[REM] int fp_io_read_register(struct fp_data *fp, u8 *addr, u8 *buf);
+//[REM] int fp_io_write_register(struct fp_data *fp, u8 *buf);
+//[REM] int fp_io_get_one_image(struct fp_data *fp, u8 *buf, u8 *image_buf);
+//[REM] int fp_read_register(struct fp_data *fp, u8 addr, u8 *buf);
+//[REM] int fp_mass_read(struct fp_data *fp, u8 addr, u8 *buf, int read_len);
 #endif
