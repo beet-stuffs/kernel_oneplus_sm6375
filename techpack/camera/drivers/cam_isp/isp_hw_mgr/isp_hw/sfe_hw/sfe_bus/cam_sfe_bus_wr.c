@@ -8,6 +8,7 @@
 #include <linux/slab.h>
 
 #include <media/cam_isp.h>
+#include <media/cam_isp_sfe.h>
 
 #include "cam_io_util.h"
 #include "cam_debug_util.h"
