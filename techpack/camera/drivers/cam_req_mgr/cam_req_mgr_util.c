@@ -248,6 +248,7 @@ uint64_t cam_get_dev_handle_status(void)
 	return active_dev_hdls;
 }
 
+
 int32_t cam_create_link_hdl(struct cam_create_dev_hdl *hdl_data)
 {
 	int idx;

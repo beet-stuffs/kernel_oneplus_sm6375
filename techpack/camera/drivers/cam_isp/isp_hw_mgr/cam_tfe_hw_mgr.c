@@ -26,7 +26,7 @@
 #include "cam_req_mgr_debug.h"
 #include "cam_trace.h"
 
-#define CAM_TFE_HW_CONFIG_TIMEOUT 60
+#define CAM_TFE_HW_CONFIG_TIMEOUT 180
 #define CAM_TFE_HW_CONFIG_WAIT_MAX_TRY  3
 
 #define TZ_SVC_SMMU_PROGRAM 0x15
@@ -34,7 +34,6 @@
 #define CAM_TFE_SAFE_DISABLE 0
 #define CAM_TFE_SAFE_ENABLE 1
 #define SMMU_SE_TFE 0
-
 
 static struct cam_tfe_hw_mgr g_tfe_hw_mgr;
 
@@ -371,7 +370,6 @@ static int cam_tfe_hw_mgr_update_clock_rate(
 		if (hw_intf && hw_intf->hw_ops.process_cmd) {
 			CAM_DBG(CAM_ISP, "hw type %d hw index:%d",
 				hw_intf->hw_type, hw_intf->hw_idx);
-
 			rc = hw_intf->hw_ops.process_cmd(
 				hw_intf->hw_priv,
 				CAM_ISP_HW_CMD_GET_CLOCK_RATE,
@@ -2815,6 +2813,7 @@ static int cam_tfe_mgr_config_hw(void *hw_mgr_priv,
 	if (!cfg->init_packet)
 		goto end;
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
 	for (i = 0; i < CAM_TFE_HW_CONFIG_WAIT_MAX_TRY; i++) {
 		rem_jiffies = wait_for_completion_timeout(
 			&ctx->config_done_complete,
@@ -2859,6 +2858,55 @@ static int cam_tfe_mgr_config_hw(void *hw_mgr_priv,
 	if ((i == CAM_TFE_HW_CONFIG_WAIT_MAX_TRY) && (rc == 0))
 		CAM_DBG(CAM_ISP,
 			"Wq delayed but IRQ CDM done");
+#else
+    for (i = 0; i < CAM_TFE_HW_CONFIG_WAIT_MAX_TRY; i++) {
+        rc = wait_for_completion_timeout(
+            &ctx->config_done_complete,
+            msecs_to_jiffies(
+            CAM_TFE_HW_CONFIG_TIMEOUT));
+        if (rc <= 0) {
+            if (!cam_cdm_detect_hang_error(ctx->cdm_handle)) {
+                CAM_ERR(CAM_ISP,
+                    "CDM workqueue delay detected, wait for some more time req_id=%llu rc=%d ctx_index %d",
+                    cfg->request_id, rc,
+                    ctx->ctx_index);
+                cam_req_mgr_debug_delay_detect();
+                trace_cam_delay_detect("CDM",
+                    "CDM workqueue delay detected",
+                    cfg->request_id, ctx->ctx_index,
+                    CAM_DEFAULT_VALUE,
+                    CAM_DEFAULT_VALUE, rc);
+                continue;
+            }
+
+            CAM_ERR(CAM_ISP,
+                "config done completion timeout for req_id=%llu rc=%d ctx_index %d",
+                cfg->request_id, rc,
+                ctx->ctx_index);
+
+            cam_req_mgr_debug_delay_detect();
+            trace_cam_delay_detect("ISP",
+                "config done completion timeout",
+                cfg->request_id, ctx->ctx_index,
+                CAM_DEFAULT_VALUE, CAM_DEFAULT_VALUE,
+                rc);
+
+            if (rc == 0)
+                rc = -ETIMEDOUT;
+
+            goto end;
+        } else {
+            rc = 0;
+            CAM_DBG(CAM_ISP,
+                "config done Success for req_id=%llu ctx_index %d",
+                cfg->request_id, ctx->ctx_index);
+            break;
+        }
+    }
+
+    if ((i == CAM_TFE_HW_CONFIG_WAIT_MAX_TRY) && (rc == 0))
+        rc = -ETIMEDOUT;
+#endif
 
 end:
 	CAM_DBG(CAM_ISP, "Exit: Config Done: %llu",  cfg->request_id);
@@ -6098,10 +6146,17 @@ int cam_tfe_hw_mgr_init(struct cam_hw_mgr_intf *hw_mgr_intf, int *iommu_hdl)
 				&g_tfe_hw_mgr.ctx_pool[i].free_res_list);
 		}
 
+		#ifndef OPLUS_FEATURE_CAMERA_COMMON
 		g_tfe_hw_mgr.ctx_pool[i].cdm_cmd =
 			kzalloc(((sizeof(struct cam_cdm_bl_request)) +
 				((CAM_ISP_CTX_CFG_MAX - 1) *
 				 sizeof(struct cam_cdm_bl_cmd))), GFP_KERNEL);
+		#else
+		g_tfe_hw_mgr.ctx_pool[i].cdm_cmd =
+			kzalloc(((sizeof(struct cam_cdm_bl_request)) +
+				((CAM_ISP_CTX_CFG_MAX - 1) *
+				 sizeof(struct cam_cdm_bl_cmd))), GFP_KERNEL);
+		#endif /*OPLUS_FEATURE_CAMERA_COMMON*/
 		if (!g_tfe_hw_mgr.ctx_pool[i].cdm_cmd) {
 			rc = -ENOMEM;
 			CAM_ERR(CAM_ISP, "Allocation Failed for cdm command");
