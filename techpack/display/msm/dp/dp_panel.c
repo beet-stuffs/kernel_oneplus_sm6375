@@ -6,7 +6,6 @@
 
 #include "dp_panel.h"
 #include <linux/unistd.h>
-#include <linux/pwm.h>
 #include <drm/drm_fixed.h>
 #include "dp_debug.h"
 #include <drm/drm_dsc.h>
@@ -3105,8 +3104,6 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	struct dp_panel_private *panel;
 	struct dp_panel *dp_panel;
 	struct sde_connector *sde_conn;
-	struct device *dev;
-	struct device_node *of_node = NULL;
 
 	if (!in->dev || !in->catalog || !in->aux ||
 			!in->link || !in->connector) {
@@ -3117,13 +3114,6 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 
 	panel = devm_kzalloc(in->dev, sizeof(*panel), GFP_KERNEL);
 	if (!panel) {
-		rc = -ENOMEM;
-		goto error;
-	}
-
-	dev = devm_kzalloc(in->dev, sizeof(*dev), GFP_KERNEL);
-	if (!dev) {
-		DP_ERR("failed to allocate dev\n");
 		rc = -ENOMEM;
 		goto error;
 	}
@@ -3146,15 +3136,6 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->dsc_feature_enable = panel->parser->dsc_feature_enable;
 	dp_panel->fec_feature_enable = panel->parser->fec_feature_enable;
 	dp_panel->dsc_continuous_pps = panel->parser->dsc_continuous_pps;
-
-	/* backlight config for edp */
-	dp_panel->bl_config.bl_min_level = panel->parser->bl_min_level;
-	dp_panel->bl_config.bl_max_level = panel->parser->bl_max_level;
-	dp_panel->bl_config.brightness_max_level = panel->parser->brightness_max_level;
-	dp_panel->bl_config.pwm_period_usecs = panel->parser->pwm_period_usecs;
-	dp_panel->bl_config.bl_scale = MAX_BL_SCALE_LEVEL;
-	dp_panel->bl_config.bl_scale_sv = MAX_SV_BL_SCALE_LEVEL;
-
 
 	if (in->base_panel) {
 		memcpy(dp_panel->dpcd, in->base_panel->dpcd,
@@ -3183,7 +3164,6 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->spd_config = dp_panel_spd_config;
 	dp_panel->setup_hdr = dp_panel_setup_hdr;
 	dp_panel->set_colorspace = dp_panel_set_colorspace;
-	dp_panel->set_backlight  = dp_panel_set_backlight;
 	dp_panel->hdr_supported = dp_panel_hdr_supported;
 	dp_panel->set_stream_info = dp_panel_set_stream_info;
 	dp_panel->read_sink_status = dp_panel_read_sink_sts;
@@ -3196,29 +3176,6 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	sde_conn->drv_panel = dp_panel;
 
 	dp_panel_edid_register(panel);
-
-	if (in->is_edp && in->panel_notifier_support) {
-		of_node = of_parse_phandle(in->dev->of_node, "qcom,edp-default-panel", 0);
-		if (!of_node) {
-			DP_ERR("phandle for default panel not found\n");
-		} else {
-			drm_panel_init(&dp_panel->drm_panel);
-			dp_panel->drm_panel.dev = dev;
-			dev->of_node = of_node;
-
-			rc = drm_panel_add(&dp_panel->drm_panel);
-			if (rc)
-				DP_ERR("Failed to add drm_panel\n");
-
-			dp_panel->connector->panel = &dp_panel->drm_panel;
-		}
-	}
-
-	if (in->is_edp) {
-		rc = dp_panel_pwm_register(dp_panel);
-		if (rc)
-			DP_ERR("Failed to register pwm\n");
-	}
 
 	return dp_panel;
 error:
@@ -3237,9 +3194,6 @@ void dp_panel_put(struct dp_panel *dp_panel)
 
 	dp_panel_edid_deregister(panel);
 	sde_conn = to_sde_connector(dp_panel->connector);
-
-	dp_panel_pwm_unregister(dp_panel);
-
 	if (sde_conn)
 		sde_conn->drv_panel = NULL;
 

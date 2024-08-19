@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -31,6 +30,18 @@
 								##__VA_ARGS__)
 #define DSI_DEBUG(fmt, ...)	DRM_DEV_DEBUG(NULL, "[msm-dsi-debug]: "fmt, \
 								##__VA_ARGS__)
+
+#ifdef OPLUS_BUG_STABILITY
+#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
+#include <soc/oplus/system/oplus_mm_kevent_fb.h>
+#define DSI_MM_ERR(fmt, ...)	\
+	do { \
+			DRM_DEV_ERROR(NULL, "[msm-dsi-error]: " fmt, ##__VA_ARGS__); \
+			mm_fb_display_kevent_named(MM_FB_KEY_RATELIMIT_1H, fmt, ##__VA_ARGS__); \
+		} while(0)
+#endif /*CONFIG_OPLUS_FEATURE_MM_FEEDBACK*/
+#endif /* OPLUS_BUG_STABILITY */
+
 /**
  * enum dsi_pixel_format - DSI pixel formats
  * @DSI_PIXEL_FORMAT_RGB565:
@@ -289,6 +300,62 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_POST_TIMING_SWITCH,
 	DSI_CMD_SET_QSYNC_ON,
 	DSI_CMD_SET_QSYNC_OFF,
+#ifdef OPLUS_BUG_STABILITY
+	DSI_CMD_POST_ON_BACKLIGHT,
+	DSI_CMD_AOD_ON,
+	DSI_CMD_AOD_OFF,
+	DSI_CMD_HBM_ON,
+	DSI_CMD_HBM_OFF,
+	DSI_CMD_HBM_OFF_HIGHLIGHT,
+	DSI_CMD_AOD_HBM_ON,
+	DSI_CMD_AOD_HBM_OFF,
+	DSI_CMD_SEED_MODE0,
+	DSI_CMD_SEED_MODE1,
+	DSI_CMD_SEED_MODE2,
+	DSI_CMD_SEED_MODE3,
+	DSI_CMD_SEED_MODE4,
+	DSI_CMD_SEED_OFF,
+	DSI_CMD_NORMAL_HBM_ON,
+	DSI_CMD_AOD_HIGH_LIGHT_MODE,
+	DSI_CMD_AOD_LOW_LIGHT_MODE,
+	DSI_CMD_SPR_MODE0,
+	DSI_CMD_SPR_MODE1,
+	DSI_CMD_SPR_MODE2,
+	DSI_CMD_DATA_DIMMING_ON,
+	DSI_CMD_DATA_DIMMING_OFF,
+	DSI_CMD_OSC_CLK_MODEO0,
+	DSI_CMD_OSC_CLK_MODEO1,
+	DSI_CMD_SET_PANEL_ID1,
+	DSI_CMD_READ_SAMSUNG_PANEL_REGISTER_ON,
+	DSI_CMD_READ_SAMSUNG_PANEL_REGISTER_OFF,
+	DSI_CMD_CABC_OFF,
+	DSI_CMD_CABC_MODE1,
+	DSI_CMD_CABC_MODE2,
+	DSI_CMD_CABC_MODE3,
+	DSI_CMD_LOADING_EFFECT_MODE1,
+	DSI_CMD_LOADING_EFFECT_MODE2,
+	DSI_CMD_LOADING_EFFECT_OFF,
+#if defined(OPLUS_FEATURE_PXLW_IRIS5)
+	DSI_CMD_SET_ABYP,
+#endif
+	DSI_CMD_SET_ILI_READ_ON,
+	DSI_CMD_SET_ILI_READ_OFF,
+#endif
+
+/* #ifdef OPLUS_BUG_COMPATIBILITY */
+	DSI_CMD_CABC_UI,
+	DSI_CMD_CABC_IMAGE,
+	DSI_CMD_CABC_VIDEO,
+/* #endif */
+/* #ifdef OPLUS_BUG_COMPATIBILITY */
+	DSI_CMD_OPLUS_SET_ON,
+	DSI_CMD_BACKLIGHT_GAMMA_ENTER,
+	DSI_CMD_BACKLIGHT_GAMMA_EXIT,
+/* #endif */
+	DSI_CMD_FAILSAFE_ON,
+	DSI_CMD_FAILSAFE_OFF,
+	DSI_CMD_PANEL_INFO_SWITCH_PAGE,
+	DSI_CMD_DEFAULT_SWITCH_PAGE,
 	DSI_CMD_SET_MAX
 };
 
@@ -471,7 +538,6 @@ struct dsi_split_link_config {
  * @append_tx_eot:       Append EOT packets for forward transmissions if set to
  *                       true.
  * @ext_bridge_mode:     External bridge is connected.
- * @ext_bridge_hpd_en:   Enable hpd for external bridge.
  * @force_hs_clk_lane:   Send continuous clock to the panel.
  * @phy_type:            DPHY/CPHY is enabled for this panel.
  * @dsi_split_link_config:  Split Link Configuration.
@@ -502,7 +568,6 @@ struct dsi_host_common_cfg {
 	bool ignore_rx_eot;
 	bool append_tx_eot;
 	bool ext_bridge_mode;
-	bool ext_bridge_hpd_en;
 	bool force_hs_clk_lane;
 	enum dsi_phy_type phy_type;
 	struct dsi_split_link_config split_link;
@@ -631,6 +696,10 @@ struct dsi_display_mode_priv_info {
 	struct msm_ratio pclk_scale;
 	struct msm_roi_caps roi_caps;
 	bool widebus_support;
+#ifdef OPLUS_BUG_STABILITY
+	int fod_on_vblank;
+	int fod_off_vblank;
+#endif /* OPLUS_BUG_STABILITY */
 	u32 allowed_mode_switch;
 };
 
