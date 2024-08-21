@@ -25,6 +25,7 @@
 #include "ufshci.h"
 #include "ufs_quirks.h"
 #include "ufshcd-crypto-qti.h"
+#include <linux/proc_fs.h>
 /*feature-memorymonitor-v001-1-begin*/
 #include <scsi/scsi.h>
 #include <scsi/scsi_ioctl.h>
@@ -47,6 +48,10 @@
 
 #define	ANDROID_BOOT_DEV_MAX	30
 static char android_boot_dev[ANDROID_BOOT_DEV_MAX];
+
+struct proc_dir_entry *signalCtrl_ctrl_dir;
+int create_signal_quality_proc(struct ufs_hba *hba);
+void remove_signal_quality_proc(struct ufs_hba *hba);
 
 enum {
 	TSTBUS_UAWM,
@@ -501,17 +506,6 @@ static int ufs_qcom_phy_power_on(struct ufs_hba *hba)
 	int ret = 0;
 
 	mutex_lock(&host->phy_mutex);
-	if (hba->curr_dev_pwr_mode == UFS_POWERDOWN_PWR_MODE &&
-			hba->clk_gating.state != CLKS_ON) {
-		ret = -1;
-		dev_err(hba->dev, "%s: abort phy power on, clks are off %d\n",
-				__func__, ret);
-
-		mutex_unlock(&host->phy_mutex);
-
-		return ret;
-	}
-
 	if (!host->is_phy_pwr_on) {
 		ret = phy_power_on(phy);
 		if (ret) {
@@ -553,6 +547,12 @@ static int ufs_qcom_power_up_sequence(struct ufs_hba *hba)
 	enum phy_mode mode = (host->limit_rate == PA_HS_MODE_B) ?
 					PHY_MODE_UFS_HS_B : PHY_MODE_UFS_HS_A;
 	int submode = host->limit_phy_submode;
+
+	/* Reset UFS Host Controller and PHY */
+	ret = ufs_qcom_host_reset(hba);
+	if (ret)
+		dev_warn(hba->dev, "%s: host reset returned %d\n",
+				  __func__, ret);
 
 	if (host->hw_ver.major < 0x4)
 		submode = UFS_QCOM_PHY_SUBMODE_NON_G4;
@@ -2268,13 +2268,7 @@ ufs_qcom_query_ioctl(struct ufs_hba *hba, u8 lun, void __user *buffer)
 			__func__, err);
 		goto out_release_mem;
 	}
-#if defined(CONFIG_UFSFEATURE)
-	if (ufsf_check_query(ioctl_data->opcode)) {
-		err = ufsf_query_ioctl(&hba->ufsf, lun, buffer, ioctl_data,
-				       UFSFEATURE_SELECTOR);
-		goto out_release_mem;
-	}
-#endif
+
 	/* verify legal parameters & send query */
 	switch (ioctl_data->opcode) {
 	case UPIU_QUERY_OPCODE_READ_DESC:
@@ -2284,7 +2278,7 @@ ufs_qcom_query_ioctl(struct ufs_hba *hba, u8 lun, void __user *buffer)
 		case QUERY_DESC_IDN_INTERCONNECT:
 		case QUERY_DESC_IDN_GEOMETRY:
 		case QUERY_DESC_IDN_POWER:
-#ifdef OPLUS_FEATURE_STORAGE_TOOL
+#ifdef CONFIG_OPLUS_UFS_DRIVER
 		case QUERY_DESC_IDN_HEALTH:
 #endif
 			index = 0;
@@ -2331,7 +2325,7 @@ ufs_qcom_query_ioctl(struct ufs_hba *hba, u8 lun, void __user *buffer)
 		case QUERY_ATTR_IDN_EE_CONTROL:
 		case QUERY_ATTR_IDN_EE_STATUS:
 		case QUERY_ATTR_IDN_SECONDS_PASSED:
-#ifdef OPLUS_FEATURE_STORAGE_TOOL
+#ifdef CONFIG_OPLUS_UFS_DRIVER
 		case QUERY_ATTR_IDN_FFU_STATUS:
 #endif
 			index = 0;
@@ -3016,6 +3010,7 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 	}
 
 	ufs_qcom_init_sysfs(hba);
+	create_signal_quality_proc(hba);
 
 	/* Provide SCSI host ioctl API */
 	hba->host->hostt->ioctl = (int (*)(struct scsi_device *, unsigned int,
@@ -3051,6 +3046,7 @@ static void ufs_qcom_exit(struct ufs_hba *hba)
 
 	ufs_qcom_disable_lane_clks(host);
 	ufs_qcom_phy_power_off(hba);
+	remove_signal_quality_proc(hba);
 	phy_exit(host->generic_phy);
 }
 
@@ -3607,13 +3603,6 @@ static void ufs_qcom_parse_lpm(struct ufs_qcom_host *host)
 static void ufs_qcom_device_reset(struct ufs_hba *hba)
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
-	int ret = 0;
-
-	/* Reset UFS Host Controller and PHY */
-	ret = ufs_qcom_host_reset(hba);
-	if (ret)
-		dev_warn(hba->dev, "%s: host reset returned %d\n",
-				  __func__, ret);
 
 	/* reset gpio is optional */
 	if (!host->device_reset)
@@ -3902,6 +3891,57 @@ static int ufs_qcom_remove(struct platform_device *pdev)
 		remove_group_qos(qcg);
 	ufshcd_remove(hba);
 	return 0;
+}
+
+static int record_read_func(struct seq_file *s, void *v)
+{
+	struct ufs_hba *hba =
+	    (struct ufs_hba *)(s->private);
+	if (!hba) {
+		return -EINVAL;
+	}
+
+    seq_printf(s, "unipro_PA_err_total_cnt %d\n", ufs_qcom_gec(hba, &hba->ufs_stats.pa_err,"pa_err_cnt_total"));
+    seq_printf(s, "unipro_DL_err_total_cnt %d\n",ufs_qcom_gec(hba, &hba->ufs_stats.dl_err,"dl_err_cnt_total"));
+    seq_printf(s, "unipro_DME_err_total_cnt %d\n",ufs_qcom_gec(hba, &hba->ufs_stats.dme_err,"dme_err_cnt"));
+	return 0;
+}
+
+static int record_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, record_read_func, PDE_DATA(inode));
+}
+
+static const struct file_operations record_fops = {
+	.owner = THIS_MODULE,
+	.open = record_open,
+	.read = seq_read,
+	.release = single_release,
+};
+
+
+int create_signal_quality_proc(struct ufs_hba *hba)
+{
+	struct proc_dir_entry *d_entry;
+	signalCtrl_ctrl_dir = proc_mkdir("ufs_signalShow", NULL);
+	if (!signalCtrl_ctrl_dir) {
+		return -ENOMEM;
+	}
+	d_entry = proc_create_data("record", S_IRUGO, signalCtrl_ctrl_dir,
+	        &record_fops, hba);
+	if (!d_entry) {
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+void remove_signal_quality_proc(struct ufs_hba *hba)
+{
+	if (signalCtrl_ctrl_dir) {
+		remove_proc_entry("record", signalCtrl_ctrl_dir);
+	}
+	return;
 }
 
 static const struct of_device_id ufs_qcom_of_match[] = {
