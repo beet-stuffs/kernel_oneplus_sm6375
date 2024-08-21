@@ -1,13 +1,3 @@
 vendor := $(srctree)/$(src)
 subdir-y += qcom
-subdir-y += oplus/mulan
 subdir-y += oplus/oscar
-subdir-y += oplus/mulan-a
-subdir-y += oplus/tyr
-subdir-y += oplus/xiangyu
-subdir-y += oplus/pikachu
-subdir-y += oplus/luigi
-subdir-y += oplus/hepburn
-subdir-y += oplus/pikachu-a
-subdir-y += oplus/larry
-subdir-y += oplus/colombo
