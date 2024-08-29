@@ -37,6 +37,8 @@
 #include <linux/clk.h>
 #include "pn553.h"
 
+#include "../oplus_nfc/oplus_nfc.h"
+
 #define NEXUS5x    0
 #define HWINFO     0
 //#ifdef VENDOR_EDIT
@@ -1591,6 +1593,9 @@ static int pn544_probe(struct i2c_client *client,
 #else
     struct device_node *node = client->dev.of_node;
 
+    //#ifdef OPLUS_FEATURE_CONNFCSOFT
+    CHECK_NFC_CHIP(PN557);
+    //#endif /* OPLUS_FEATURE_CONNFCSOFT */
     if (node) {
         platform_data = devm_kzalloc(&client->dev,
             sizeof(struct pn544_i2c_platform_data), GFP_KERNEL);
