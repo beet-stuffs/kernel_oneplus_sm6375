@@ -471,11 +471,13 @@ static int sc8517_set_chg_enable(struct oplus_voocphy_manager *chip, bool enable
 	/* vac range disable */
 	sc8517_write_byte(chip->client, SC8517_REG_02, 0x7a);
 
-	if (enable)
+	if (enable) {
 		ret = sc8517_write_byte(chip->client, SC8517_REG_02, ENABLE_MOS); /* enable mos */
-	else
+		sc8517_write_byte(chip->client, SC8517_REG_04, 0x36); /* WD:1000ms */
+	} else {
 		ret = sc8517_write_byte(chip->client, SC8517_REG_02, DISENABLE_MOS); /* disable mos */
-
+		sc8517_write_byte(chip->client, SC8517_REG_04, 0x06); /* dsiable wdt */
+	}
 	if (ret < 0) {
 		chg_err("failed to set chg enable(%d)\n", ret);
 		return ret;
