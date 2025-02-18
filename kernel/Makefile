@@ -125,6 +125,10 @@ obj-$(CONFIG_GCC_PLUGIN_STACKLEAK) += stackleak.o
 KASAN_SANITIZE_stackleak.o := n
 KCOV_INSTRUMENT_stackleak.o := n
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+obj-$(CONFIG_OPLUS_FEATURE_SCHED_ASSIST) += sched_assist/
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
+
 $(obj)/configs.o: $(obj)/config_data.gz
 
 targets += config_data config_data.gz
