@@ -813,9 +813,9 @@ int tp_touch_healthinfo_handle(struct monitor_data *monitor_data,
 							   monitor_data->points_state[i].last_point.y);
 					}
 
-					if (monitor_data->points_state[i].touch_action == ACTION_CLICK
-							&& dist_sq < dist_sq < monitor_data->jumping_point_judge_distance *
-							dist_sq < monitor_data->jumping_point_judge_distance
+						if (monitor_data->points_state[i].touch_action == ACTION_CLICK
+							&& dist_sq < monitor_data->jumping_point_judge_distance *
+							monitor_data->jumping_point_judge_distance
 							&& !check_healthinfo_time_counter_timeout(
 								monitor_data->points_state[i].time_counter, monitor_data->in_game_mode ?
 								(JUMPING_POINT_FRAMES_MS / monitor_data->report_rate_in_game) :
